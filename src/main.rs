@@ -1,6 +1,7 @@
 use base64::{self, engine::general_purpose, Engine as _};
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct KeySerialization {
@@ -19,8 +20,18 @@ fn main() {
 
     let serialized = serialize_keys(&secret_key, &public_key);
     let json_key = serde_json::to_string(&serialized).unwrap();
+
+    // Compute the SHA-256 hash of the JSON string
+    let mut hasher = Sha256::new();
+    hasher.update(json_key.as_bytes());
+    let hash_result = hasher.finalize();
+
+    // Convert the hash to a hexadecimal string
+    let blockchain_address = format!("0x{:x}", hash_result);
+
     println!("Serialized Keys: {:?}", serialized);
     println!("JSON: {}", json_key);
+    println!("Blockchain Address: {}", blockchain_address);
 
     // Optionally, deserialize back
     let deserialized = deserialize_keys(&serialized).expect("Failed to deserialize keys");
