@@ -18,7 +18,9 @@ fn main() {
     println!("Public Key: {:?}", public_key);
 
     let serialized = serialize_keys(&secret_key, &public_key);
+    let json_key = serde_json::to_string(&serialized).unwrap();
     println!("Serialized Keys: {:?}", serialized);
+    println!("JSON: {}", json_key);
 
     // Optionally, deserialize back
     let deserialized = deserialize_keys(&serialized).expect("Failed to deserialize keys");
