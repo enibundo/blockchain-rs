@@ -4,75 +4,102 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 #[derive(Serialize, Deserialize, Debug)]
-struct KeySerialization {
+struct ThePublicKey {
     curve: String, // Name of the curve (e.g., "secp256k1")
-    d: String,     // Private key (D) as a base64-encoded string
     x: String,     // Public key's X-coordinate as a base64-encoded string
     y: String,     // Public key's Y-coordinate as a base64-encoded string
 }
 
-fn main() {
-    let secp = Secp256k1::new();
+#[derive(Serialize, Deserialize, Debug)]
+struct ThePrivateKey {
+    public_key: ThePublicKey, // Public key
+    d: String,                // Private key (D) as a base64-encoded string
+}
 
-    let (secret_key, public_key) = secp.generate_keypair(&mut secp256k1::rand::thread_rng());
-    println!("Secret Key: {:?}", secret_key);
-    println!("Public Key: {:?}", public_key);
+#[derive(Serialize, Deserialize, Debug)]
+struct Account {
+    private_key: ThePrivateKey,
+    address: String,
+}
 
-    let serialized = serialize_keys(&secret_key, &public_key);
-    let json_key = serde_json::to_string(&serialized).unwrap();
-
-    // Compute the SHA-256 hash of the JSON string
+fn get_address(public_key: &ThePublicKey) -> String {
+    let json_key = serde_json::to_string(public_key).unwrap();
     let mut hasher = Sha256::new();
     hasher.update(json_key.as_bytes());
-    let hash_result = hasher.finalize();
+    let hash_result = format!("0x{:x}", hasher.finalize());
 
-    // Convert the hash to a hexadecimal string
-    let blockchain_address = format!("0x{:x}", hash_result);
+    return hash_result;
+}
 
-    println!("Serialized Keys: {:?}", serialized);
-    println!("JSON: {}", json_key);
-    println!("Blockchain Address: {}", blockchain_address);
+fn generate_new_private_key() -> ThePrivateKey {
+    let secp = Secp256k1::new();
+    let (secret_key, public_key) = secp.generate_keypair(&mut secp256k1::rand::thread_rng());
+    println!("\n-- generating keys --");
+    println!("Secret Key: {:?}", secret_key);
+    println!("Public Key: {:?}", public_key);
+    println!("-- end generating keys --\n");
+    return serialize_keys(&secret_key, &public_key);
+}
+
+fn main() {
+    let serialized = generate_new_private_key();
+    let json_key = serde_json::to_string(&serialized).unwrap();
+
+    println!("-- json --");
+    println!("{}", json_key);
+    println!("-- end json --\n");
+
+    let blockchain_address = get_address(&serialized.public_key);
+
+    println!("-- address --");
+    println!("{}", blockchain_address);
+    println!("-- end address --");
 
     // Optionally, deserialize back
     let deserialized = deserialize_keys(&serialized).expect("Failed to deserialize keys");
-    println!("Deserialized Keys: {:?}", deserialized);
-
-    // Verify that the deserialized keys match the original keys
-    assert_eq!(secret_key, deserialized.0);
-    assert_eq!(public_key, deserialized.1);
+    println!("\n-- deserialized keys --");
+    println!("Deserialized Secret Key: {:?}", deserialized.0);
+    println!("Deserialized Public Key: {:?}", deserialized.1);
+    println!("-- end deserialized keys --");
 }
 
-fn serialize_keys(secret_key: &SecretKey, public_key: &PublicKey) -> KeySerialization {
+fn serialize_keys(secret_key: &SecretKey, public_key: &PublicKey) -> ThePrivateKey {
     let d = general_purpose::STANDARD.encode(secret_key.secret_bytes());
 
     let public_key_serialized = public_key.serialize_uncompressed();
     let x = general_purpose::STANDARD.encode(&public_key_serialized[1..33]); // X is bytes 1-32
     let y = general_purpose::STANDARD.encode(&public_key_serialized[33..]); // Y is bytes 33-64
 
-    KeySerialization {
-        curve: "secp256k1".to_string(),
+    ThePrivateKey {
+        public_key: ThePublicKey {
+            curve: "secp256k1".to_string(),
+
+            x,
+            y,
+        },
         d,
-        x,
-        y,
     }
 }
 
 fn deserialize_keys(
-    serialized: &KeySerialization,
+    serialized: &ThePrivateKey,
 ) -> Result<(SecretKey, PublicKey), secp256k1::Error> {
     let d_bytes = general_purpose::STANDARD
         .decode(&serialized.d)
         .expect("Invalid base64 in D");
+
     let secret_key = SecretKey::from_slice(&d_bytes)?;
 
     let x_bytes = general_purpose::STANDARD
-        .decode(&serialized.x)
+        .decode(&serialized.public_key.x)
         .expect("Invalid base64 in X");
+
     let y_bytes = general_purpose::STANDARD
-        .decode(&serialized.y)
+        .decode(&serialized.public_key.y)
         .expect("Invalid base64 in Y");
 
     let mut public_key_bytes = vec![0x04];
+
     public_key_bytes.extend_from_slice(&x_bytes);
     public_key_bytes.extend_from_slice(&y_bytes);
 
