@@ -1,7 +1,7 @@
 use base64::{self, engine::general_purpose, Engine as _};
 use secp256k1::ecdsa::Signature;
 use secp256k1::hashes::{sha256, Hash};
-use secp256k1::{All, Message, PublicKey, Secp256k1, SecretKey};
+use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
