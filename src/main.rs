@@ -1,5 +1,7 @@
 use base64::{self, engine::general_purpose, Engine as _};
-use secp256k1::{PublicKey, Secp256k1, SecretKey};
+use secp256k1::ecdsa::Signature;
+use secp256k1::hashes::{sha256, Hash};
+use secp256k1::{All, Message, PublicKey, Secp256k1, SecretKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -37,6 +39,7 @@ impl PrivateKey {
     fn new() -> PrivateKey {
         let secp = Secp256k1::new();
         let (secret_key, public_key) = secp.generate_keypair(&mut secp256k1::rand::thread_rng());
+
         PrivateKey {
             secret_key,
             public_key,
@@ -60,8 +63,11 @@ impl PrivateKey {
         }
     }
 
-    fn sign(&self, s: &String) -> String {
-        String::from("foobar")
+    fn sign(&self, s: &String) -> (Message, Signature) {
+        let digest = sha256::Hash::hash(s.as_bytes());
+        let message = Message::from_digest(digest.to_byte_array());
+
+        (message, self.secret_key.sign_ecdsa(message))
     }
 
     fn to_string(&self) -> String {
@@ -82,10 +88,16 @@ fn main() {
     print_with_separator("address", &blockchain_address);
 
     let message_to_sign = String::from("Hello World");
-    let signed_message = new_private_key.sign(&message_to_sign);
+    let (message, signature) = new_private_key.sign(&message_to_sign);
 
     print_with_separator("message to sign", &message_to_sign);
-    print_with_separator("signed message", &signed_message);
+    print_with_separator("signed message", &signature.to_string());
+
+    let is_valid_signature = signature
+        .verify(&message, &new_private_key.public_key)
+        .is_ok();
+
+    print_with_separator("is valid signature", &is_valid_signature.to_string());
 }
 
 fn print_with_separator(title: &str, message: &str) {
