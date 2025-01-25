@@ -4,106 +4,92 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 #[derive(Serialize, Deserialize, Debug)]
-struct ThePublicKey {
-    curve: String, // Name of the curve (e.g., "secp256k1")
-    x: String,     // Public key's X-coordinate as a base64-encoded string
-    y: String,     // Public key's Y-coordinate as a base64-encoded string
+struct SerializedPublicKey {
+    curve: String,
+    x: String,
+    y: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct ThePrivateKey {
-    public_key: ThePublicKey, // Public key
-    d: String,                // Private key (D) as a base64-encoded string
-}
+impl SerializedPublicKey {
+    fn get_address(&self) -> String {
+        let json_key = serde_json::to_string(&self).unwrap();
+        let mut hasher = Sha256::new();
+        hasher.update(json_key.as_bytes());
+        let hash_result = format!("0x{:x}", hasher.finalize());
 
-#[derive(Serialize, Deserialize, Debug)]
-struct Account {
-    private_key: ThePrivateKey,
-    address: String,
-}
-
-fn get_address(public_key: &ThePublicKey) -> String {
-    let json_key = serde_json::to_string(public_key).unwrap();
-    let mut hasher = Sha256::new();
-    hasher.update(json_key.as_bytes());
-    let hash_result = format!("0x{:x}", hasher.finalize());
-
-    return hash_result;
-}
-
-fn generate_new_private_key() -> ThePrivateKey {
-    let secp = Secp256k1::new();
-    let (secret_key, public_key) = secp.generate_keypair(&mut secp256k1::rand::thread_rng());
-    println!("\n-- generating keys --");
-    println!("Secret Key: {:?}", secret_key);
-    println!("Public Key: {:?}", public_key);
-    println!("-- end generating keys --\n");
-    return serialize_keys(&secret_key, &public_key);
-}
-
-fn main() {
-    let serialized = generate_new_private_key();
-    let json_key = serde_json::to_string(&serialized).unwrap();
-
-    println!("-- json --");
-    println!("{}", json_key);
-    println!("-- end json --\n");
-
-    let blockchain_address = get_address(&serialized.public_key);
-
-    println!("-- address --");
-    println!("{}", blockchain_address);
-    println!("-- end address --");
-
-    // Optionally, deserialize back
-    let deserialized = deserialize_keys(&serialized).expect("Failed to deserialize keys");
-    println!("\n-- deserialized keys --");
-    println!("Deserialized Secret Key: {:?}", deserialized.0);
-    println!("Deserialized Public Key: {:?}", deserialized.1);
-    println!("-- end deserialized keys --");
-}
-
-fn serialize_keys(secret_key: &SecretKey, public_key: &PublicKey) -> ThePrivateKey {
-    let d = general_purpose::STANDARD.encode(secret_key.secret_bytes());
-
-    let public_key_serialized = public_key.serialize_uncompressed();
-    let x = general_purpose::STANDARD.encode(&public_key_serialized[1..33]); // X is bytes 1-32
-    let y = general_purpose::STANDARD.encode(&public_key_serialized[33..]); // Y is bytes 33-64
-
-    ThePrivateKey {
-        public_key: ThePublicKey {
-            curve: "secp256k1".to_string(),
-
-            x,
-            y,
-        },
-        d,
+        hash_result
     }
 }
 
-fn deserialize_keys(
-    serialized: &ThePrivateKey,
-) -> Result<(SecretKey, PublicKey), secp256k1::Error> {
-    let d_bytes = general_purpose::STANDARD
-        .decode(&serialized.d)
-        .expect("Invalid base64 in D");
+#[derive(Serialize, Deserialize, Debug)]
 
-    let secret_key = SecretKey::from_slice(&d_bytes)?;
+struct SerializedPrivateKey {
+    public_key: SerializedPublicKey,
+    d: String,
+}
 
-    let x_bytes = general_purpose::STANDARD
-        .decode(&serialized.public_key.x)
-        .expect("Invalid base64 in X");
+struct PrivateKey {
+    secret_key: SecretKey,
+    public_key: PublicKey,
+}
 
-    let y_bytes = general_purpose::STANDARD
-        .decode(&serialized.public_key.y)
-        .expect("Invalid base64 in Y");
+impl PrivateKey {
+    fn new() -> PrivateKey {
+        let secp = Secp256k1::new();
+        let (secret_key, public_key) = secp.generate_keypair(&mut secp256k1::rand::thread_rng());
+        PrivateKey {
+            secret_key,
+            public_key,
+        }
+    }
 
-    let mut public_key_bytes = vec![0x04];
+    fn as_serialized(&self) -> SerializedPrivateKey {
+        let d = general_purpose::STANDARD.encode(self.secret_key.secret_bytes());
 
-    public_key_bytes.extend_from_slice(&x_bytes);
-    public_key_bytes.extend_from_slice(&y_bytes);
+        let public_key_serialized = self.public_key.serialize_uncompressed();
+        let x = general_purpose::STANDARD.encode(&public_key_serialized[1..33]); // X is bytes 1-32
+        let y = general_purpose::STANDARD.encode(&public_key_serialized[33..]); // Y is bytes 33-64
 
-    let public_key = PublicKey::from_slice(&public_key_bytes)?;
+        SerializedPrivateKey {
+            public_key: SerializedPublicKey {
+                curve: String::from("secp256k1"),
+                x,
+                y,
+            },
+            d,
+        }
+    }
 
-    Ok((secret_key, public_key))
+    fn sign(&self, s: &String) -> String {
+        String::from("foobar")
+    }
+
+    fn to_string(&self) -> String {
+        serde_json::to_string(&self.as_serialized()).unwrap()
+    }
+
+    fn get_address(&self) -> String {
+        self.as_serialized().public_key.get_address()
+    }
+}
+
+fn main() {
+    let new_private_key = PrivateKey::new();
+    let string_private_key = new_private_key.to_string();
+    print_with_separator("json", &string_private_key);
+
+    let blockchain_address = new_private_key.get_address();
+    print_with_separator("address", &blockchain_address);
+
+    let message_to_sign = String::from("Hello World");
+    let signed_message = new_private_key.sign(&message_to_sign);
+
+    print_with_separator("message to sign", &message_to_sign);
+    print_with_separator("signed message", &signed_message);
+}
+
+fn print_with_separator(title: &str, message: &str) {
+    println!("-- {title} --");
+    println!("{}", message);
+    println!("-- end {title} --");
 }
